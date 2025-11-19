@@ -4,90 +4,105 @@ const { Pool } = require('pg');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Conexión a BD
+// Base de datos conectar para el render
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
-// La Web Gamer 
+// Pagina gamer
 app.get('/', async (req, res) => {
-  let data = [];
+  let resultados = [];
+  let errorDb = null;
+
   try {
     const client = await pool.connect();
+  
     const result = await client.query('SELECT * FROM puntuaciones');
-    data = result.rows;
+    resultados = result.rows;
     client.release();
   } catch (err) {
-    console.error(err);
+    console.error("Error leyendo BD:", err);
+    errorDb = err;
   }
-
+//Diseño De estilo gamer de la pagina
   res.send(`
     <!DOCTYPE html>
     <html lang="es">
     <head>
       <meta charset="UTF-8">
-      <title>Gamer Zone</title>
+      <title>Gamer Profile</title>
       <style>
-        body { background-color: #0b0b0b; color: #00ff00; font-family: 'Courier New', monospace; text-align: center; padding: 20px; }
-        h1 { text-shadow: 0 0 10px #00ff00; }
-        .grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; margin-top: 40px; }
-        .card { border: 1px solid #9d00ff; background: #141414; padding: 15px; width: 250px; box-shadow: 0 0 8px #9d00ff; }
-        .nick { font-weight: bold; color: #d600ff; }
-        .btn { display: inline-block; margin-top: 20px; padding: 10px 20px; border: 1px solid #fff; color: #fff; text-decoration: none; }
-        .btn:hover { background: #fff; color: #000; }
+        body { background-color: #0f0f0f; color: #00ff41; font-family: 'Courier New', monospace; text-align: center; padding: 20px; }
+        h1 { text-shadow: 2px 2px #bc13fe; font-size: 3rem; }
+        .container { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; margin-top: 30px; }
+        .card { border: 2px solid #bc13fe; background: #1a1a1a; padding: 20px; width: 300px; box-shadow: 0 0 15px #bc13fe; border-radius: 10px; }
+        .card:hover { transform: scale(1.05); transition: 0.3s; }
+        .btn { background: #bc13fe; color: white; padding: 15px 30px; text-decoration: none; font-size: 1.2rem; border-radius: 5px; display: inline-block; margin-top: 20px; border: none; cursor: pointer; }
+        .btn:hover { background: #d45bff; }
+        .error { color: red; border: 1px solid red; padding: 10px; display: inline-block; }
       </style>
     </head>
     <body>
-      <h1>GAME DATABASE</h1>
-      <p>Proyecto: Dependencia | Servidor: estilo.js</p>
+      <h1>GAME OVER - HIGHSCORES</h1>
       
-      <div class="grid">
-        ${data.length > 0 ? data.map(user => `
+      ${errorDb ? `<div class="error"> La base de datos no está lista o no conectada. <br> Usa el botón de abajo.</div>` : ''}
+
+      <div class="container">
+        ${resultados.length > 0 ? resultados.map(r => `
           <div class="card">
-            <div class="nick">${user.nickname}</div>
-            <div>Juego: ${user.juego_favorito}</div>
-            <div>"${user.mensaje}"</div>
+            <h2 style="color: #bc13fe">${r.nickname}</h2>
+            <p><strong>Juego:</strong> ${r.juego_favorito}</p>
+            <p><em>"${r.mensaje}"</em></p>
           </div>
-        `).join('') : '<p>Base de datos vacía o no conectada.</p>'}
+        `).join('') : '<p>No hay datos cargados aún...</p>'}
       </div>
-      
-      <br><br>
-      <a href="/setup-db" class="btn">CLICK AQUÍ PARA CREAR TABLAS (SETUP)</a>
+
+      <br><br><br>
+      <hr style="border-color: #333">
+      <h3>Zona de Mantenimiento</h3>
+      <p>Si es la primera vez que entras o la tabla se borró:</p>
+      <a href="/restaurar-backup" class="btn">🔌 RESTAURAR BASE DE DATOS (BACKUP)</a>
     </body>
     </html>
   `);
 });
 
-app.get('/setup-db', async (req, res) => {
+
+app.get('/restaurar-backup', async (req, res) => {
   try {
     const client = await pool.connect();
     
-  
+    // Ejecutar el archivo sql
     await client.query(`
       CREATE TABLE IF NOT EXISTS puntuaciones (
-        id SERIAL PRIMARY KEY,
-        nickname VARCHAR(50),
-        juego_favorito VARCHAR(100),
-        mensaje TEXT
+          id SERIAL PRIMARY KEY,
+          nickname VARCHAR(50) NOT NULL,
+          juego_favorito VARCHAR(100),
+          mensaje TEXT
       );
-    `);
+      
     
-    
-    await client.query(`
+      TRUNCATE TABLE puntuaciones;
+
+      
       INSERT INTO puntuaciones (nickname, juego_favorito, mensaje) VALUES 
-      ('AdminGamer', 'System Shock', 'Base de datos inicializada con éxito.'),
-      ('Player2', 'Minecraft', 'Buscando diamantes...'),
-      ('SpeedRunner', 'Super Metroid', 'Record mundial any%');
+      ('PlayerOne', 'Elden Ring', '¡El mejor juego de la historia!'),
+      ('NoobMaster', 'Fortnite', 'Buscando duo para rankeds.');
     `);
     
     client.release();
-    res.send("<h1>Eso eso</h1><p>Tablas creadas y datos insertados. <a href='/'>Volver al inicio</a></p>");
+    res.send(`
+        <h1 style="color:green; font-family:sans-serif; text-align:center; margin-top:50px;">✅ BACKUP RESTAURADO CON ÉXITO</h1>
+        <p style="text-align:center"><a href="/">Volver a la página principal</a></p>
+    `);
   } catch (err) {
-    res.send("<h1>No carga</h1><pre>" + err + "</pre>");
+    res.send(`<h1 style="color:red">ERROR: ${err.message}</h1>`);
   }
 });
 
 app.listen(port, () => {
-  console.log(`Iniciando estilo.js en puerto ${port}`);
+  console.log(`Servidor Gamer (estilo.js) corriendo en puerto ${port}`);
 });
